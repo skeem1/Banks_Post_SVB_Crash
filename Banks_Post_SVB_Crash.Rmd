@@ -1,0 +1,89 @@
+---
+title: "Banks Post SVB Crash"
+output: html_notebook
+---
+
+
+```{r}
+if (!require(tidyverse)) install.packages("tidyverse")
+if (!require(tidyquant)) install.packages("tidyquant")
+if (!require(PerformanceAnalytics)) install.packages("PerformanceAnalytics")
+if (!require(xts)) install.packages("xts")
+if (!require(lubridate)) install.packages("lubridate")
+if (!require(Quandl)) install.packages("Quandl")
+if (!require(riingo)) install.packages("riingo")
+```
+
+
+```{r}
+# calling libraries
+library(PerformanceAnalytics)
+library(xts)
+library(lubridate)
+```
+
+
+```{r}
+#I'm probably conflating the problem on both SIVB and CS as 'bank-runs instigated by VC catastrophists. Might be an oversimplification that more talented analysts can expand on. 
+
+# Else you can use this token (from one of our TAs, but it might stop working at somet point)
+api_key <-  "224f4bd36f0875f94c4cb328cba5f1716d4aad64"
+
+# Need to set the key so this R session can pass it to the Tiingo API
+riingo_set_token(api_key)
+
+# These are our tickers of interest
+tickers <- c(
+"SPY",
+"CS",
+"UBS",
+"SIVB",
+"SCHW",
+"FRC",
+"PNC",
+"SI",
+"PACW",
+"NYCB")
+
+
+tickers <- "CS"
+```
+```{r}
+prices_volume_via_api_2008 <- 
+  tickers %>% 
+  riingo_prices(start_date = "2008-01-01", end_date = Sys.Date()) %>% 
+  select(ticker, date, close, volume) %>% 
+  mutate(date = ymd(date))
+
+?riingo_prices()
+
+prices_volume_via_api_2008 %>% 
+  head()
+```
+
+
+```{r}
+prices_volume_via_api_2008 <- 
+  tickers %>% 
+  tq_get(get = "tiingo", from = "2008-01-01") %>% 
+  select(date,ticker = symbol, close, volume) %>%
+  mutate(date = as.Date(date))
+```
+
+```{r}
+stock_prices <- c("SPY","CS","UBS","SIVB","SCHW","FRC","PNC","SI","PACW","NYCB") %>%
+    tq_get(get  = "tiingo",
+           from = "2010-01-01",
+           to   = Sys.Date())
+```
+
+
+```{r}
+stock_returns_monthly <- stock_prices %>%
+    group_by(symbol) %>%
+    tq_transmute(select     = adjusted, 
+                 mutate_fun = periodReturn, 
+                 period     = "monthly", 
+                 col_rename = "Ra")
+```
+
