@@ -3,7 +3,7 @@ title: "Banks Post SVB Crash"
 output: html_notebook
 ---
 
-
+#installing libraries, if they are not available locally 
 ```{r}
 if (!require(tidyverse)) install.packages("tidyverse")
 if (!require(tidyquant)) install.packages("tidyquant")
@@ -24,17 +24,23 @@ library(lubridate)
 
 
 ```{r}
-#I'm probably conflating the problem on both SIVB and CS as 'bank-runs instigated by VC catastrophists. Might be an oversimplification that more talented analysts can expand on. 
+#I'm probably conflating the problem on both SIVB and CS as 'bank-runs' instigated by VC catastrophists. Might be an oversimplification that more talented analysts can expand on. 
 
-# Else you can use this token (from one of our TAs, but it might stop working at somet point)
+#for timeframe, let's select from '08 since it was the last financial crisis, also known as the GFC. 
+
+#API key details:
+# Else you can use this token (from one of our TAs, but it might stop working at some point)
 api_key <-  "224f4bd36f0875f94c4cb328cba5f1716d4aad64"
+
 
 # Need to set the key so this R session can pass it to the Tiingo API
 riingo_set_token(api_key)
 
-# These are our tickers of interest
+
+
+# These are our tickers of interest, will be grouping some global banks and regional American banks. I've added Schwab (SCHW) although it is not a bank but a brokerage. 
+
 tickers <- c(
-"SPY",
 "CS",
 "UBS",
 "SIVB",
@@ -43,10 +49,12 @@ tickers <- c(
 "PNC",
 "SI",
 "PACW",
-"NYCB")
+"NYCB",
+"FSRBX"
+)
 
 
-tickers <- "CS"
+#tickers <- "CS"
 ```
 ```{r}
 prices_volume_via_api_2008 <- 
@@ -71,12 +79,11 @@ prices_volume_via_api_2008 <-
 ```
 
 ```{r}
-stock_prices <- c("SPY","CS","UBS","SIVB","SCHW","FRC","PNC","SI","PACW","NYCB") %>%
+stock_prices <- c("CS","UBS","SIVB","SCHW","FRC","PNC","SI","PACW","NYCB", "FSRBX") %>%
     tq_get(get  = "tiingo",
-           from = "2010-01-01",
+           from = "2008-01-01",
            to   = Sys.Date())
 ```
-
 
 ```{r}
 stock_returns_monthly <- stock_prices %>%
@@ -87,3 +94,150 @@ stock_returns_monthly <- stock_prices %>%
                  col_rename = "Ra")
 ```
 
+```{r}
+#wts <- c(0.4, 0.3, 0.3)
+stock_returns_monthly %>%
+    tq_portfolio(assets_col  = symbol, 
+                 returns_col = Ra, 
+                 #weights     = wts, 
+                 col_rename  = "Ra")
+```
+
+```{r}
+stock_returns_monthly %>%
+    ggplot(aes(x = date, y = Ra)) +
+    geom_bar(stat = "identity", fill = palette_light()[[1]]) +
+    labs(title = "Portfolio Returns",
+         subtitle = "40% AAPL, 30% GOOG, and 30% NFLX",
+         caption = "Shows an above-zero trend meaning positive returns",
+         x = "", y = "Monthly Returns") +
+    geom_smooth(method = "lm") +
+    theme_tq() +
+    scale_color_tq() +
+    scale_y_continuous(labels = scales::percent)
+```
+
+
+# Getting SPDR Technology ETF i.e.XLK (Baseline for Market) Returns 
+```{r}
+baseline_returns_monthly1 <- "XLK" %>%
+    tq_get(get  = "tiingo",
+           from = "2008-01-01",
+           to   = Sys.Date()) %>%
+    tq_transmute(select     = adjusted, 
+                 mutate_fun = periodReturn, 
+                 period     = "monthly", 
+                 col_rename = "Rb")
+
+```
+
+
+# Now that we have the aggregated portfolio returns (“Ra”) and the baseline returns (“Rb”), we can merge to get our consolidated table of asset and baseline returns. Nothing new here.
+
+```{r}
+RaRb_single_portfolio1 <- left_join(stock_returns_monthly, 
+                                   baseline_returns_monthly1,
+                                   by = "date")
+```
+
+# Computing the CAPM Table
+# The CAPM table is computed with the function table.CAPM from PerformanceAnalytics.
+
+```{r}
+RaRb_single_portfolio1 %>%
+    tq_performance(Ra = Ra, Rb = Rb, performance_fun = table.CAPM) %>%
+  select(Alpha, AnnualizedAlpha, Beta, Correlation, 'R-squared')
+
+```
+```{r}
+stocks_returns_monthly %>%
+    ggplot(aes(x = date, y = Ra)) +
+    geom_bar(stat = "identity", fill = palette_light()[[1]]) +
+    labs(title = "Stock Returns",
+         subtitle = "40% AAPL, 30% GOOG, and 30% NFLX",
+         caption = "Shows an above-zero trend meaning positive returns",
+         x = "", y = "Monthly Returns") +
+    geom_smooth(method = "lm") +
+    theme_tq() +
+    scale_color_tq() +
+    scale_y_continuous(labels = scales::percent)
+```
+
+
+# This is good, but we want to see how our $10,000 initial investment is growing. This is simple with the underlying Return.portfolio argument, wealth.index = TRUE. All we need to do is add these as additional parameters to tq_portfolio!
+
+```{r}
+wts <- c(0.4, 0.3, 0.3)
+portfolio_growth_monthly <- stock_returns_monthly %>%
+    tq_portfolio(assets_col   = symbol, 
+                 returns_col  = Ra, 
+                 weights      = wts, 
+                 col_rename   = "investment.growth",
+                 wealth.index = TRUE) %>%
+    mutate(investment.growth = investment.growth * 1000)
+```
+
+```{r}
+portfolio_growth_monthly %>%
+    ggplot(aes(x = date, y = investment.growth)) +
+    geom_line(size = 2, color = palette_light()[[1]]) +
+    labs(title = "Portfolio Growth",
+         subtitle = "40% AAPL, 30% GOOG, and 30% NFLX",
+         caption = "Now we can really visualize performance!",
+         x = "", y = "Portfolio Value") +
+    geom_smooth(method = "loess") +
+    theme_tq() +
+    scale_color_tq() +
+    scale_y_continuous(labels = scales::dollar)
+```
+```{r}
+portfolio_growth_monthly_multi %>%
+    ggplot(aes(x = date, y = investment.growth, color = factor(portfolio))) +
+    geom_line(size = 2) +
+    labs(title = "Portfolio Growth",
+         subtitle = "Comparing Multiple Portfolios",
+         caption = "Portfolio 3 is a Standout!",
+         x = "", y = "Portfolio Value",
+         color = "Portfolio") +
+    geom_smooth(method = "loess") +
+    theme_tq() +
+    scale_color_tq() +
+    scale_y_continuous(labels = scales::dollar)
+```
+
+```{r}
+
+#visualize compared to benchmark S&P 500 and FSRBX (Fidelity Select Banking Portfolio)
+
+Return.cumulative(stock_returns_monthly, geometric = TRUE)
+chart.CumReturns(stock_returns_monthly, wealth.index = FALSE, geometric= TRUE)
+```
+
+#data wrangle
+#calculate the risk adjusted performance indicators
+
+library(PerformanceAnalytics)
+library(xts)
+library(lubridate)
+# load data and create an xts dataset
+fund<-read.csv("contrafund.csv")
+fund$Date<-mdy(fund$Date)
+fund2<-fund[order(fund$Date),]
+#create an xts dataset
+All.dat<-xts(fund2[,-1],order.by=fund2[,1],)
+
+Return.cumulative(All.dat, geometric =TRUE)
+chart.CumReturns(All.dat, wealth.index =FALSE, geometric = TRUE)
+
+SharpeRatio(All.dat$ContraRet,All.dat$Risk.Free)
+TreynorRatio(All.dat$ContraRet,All.dat$Market.Return,All.dat$Risk.Free)
+
+All.dat<-transform(All.dat,MktExcess=Market.Return-Risk.Free,FundExcess=ContraRet-Risk.Free)
+
+Alpha=lm(FundExcess~MktExcess,data=All.dat)
+summary(Alpha)
+
+#calculate factor analysis
+
+
+#visualizations 
