@@ -20,6 +20,7 @@ if (!require(riingo)) install.packages("riingo")
 library(PerformanceAnalytics)
 library(xts)
 library(lubridate)
+library(dplyr)
 ```
 
 
@@ -36,9 +37,7 @@ api_key <-  "224f4bd36f0875f94c4cb328cba5f1716d4aad64"
 # Need to set the key so this R session can pass it to the Tiingo API
 riingo_set_token(api_key)
 
-
-
-# These are our tickers of interest, will be grouping some global banks and regional American banks. I've added Schwab (SCHW) although it is not a bank but a brokerage. 
+# These are our tickers of interest, will be grouping some global banks and regional American banks. I've added Schwab (SCHW) although it is not a bank but a brokerage and FSRBX which is Fidelity's Mutual Fund on Select Banking Portfolio.
 
 tickers <- c(
 "CS",
@@ -52,9 +51,6 @@ tickers <- c(
 "NYCB",
 "FSRBX"
 )
-
-
-#tickers <- "CS"
 ```
 ```{r}
 prices_volume_via_api_2008 <- 
@@ -86,6 +82,16 @@ stock_prices <- c("CS","UBS","SIVB","SCHW","FRC","PNC","SI","PACW","NYCB", "FSRB
 ```
 
 ```{r}
+
+#Using rename()
+stock_prices <- stock_prices %>% 
+       rename("Date" = "date")
+
+stock_prices
+```
+
+
+```{r}
 stock_returns_monthly <- stock_prices %>%
     group_by(symbol) %>%
     tq_transmute(select     = adjusted, 
@@ -95,7 +101,6 @@ stock_returns_monthly <- stock_prices %>%
 ```
 
 ```{r}
-#wts <- c(0.4, 0.3, 0.3)
 stock_returns_monthly %>%
     tq_portfolio(assets_col  = symbol, 
                  returns_col = Ra, 
@@ -105,7 +110,7 @@ stock_returns_monthly %>%
 
 ```{r}
 stock_returns_monthly %>%
-    ggplot(aes(x = date, y = Ra)) +
+    ggplot(aes(x = Date, y = Ra)) +
     geom_bar(stat = "identity", fill = palette_light()[[1]]) +
     labs(title = "Portfolio Returns",
          subtitle = "40% AAPL, 30% GOOG, and 30% NFLX",
@@ -131,13 +136,23 @@ baseline_returns_monthly1 <- "XLK" %>%
 
 ```
 
+```{r}
+
+#Using rename()
+baseline_returns_monthly1 <- baseline_returns_monthly1 %>% 
+       rename("Date" = "date")
+
+baseline_returns_monthly1
+```
+
+
 
 # Now that we have the aggregated portfolio returns (“Ra”) and the baseline returns (“Rb”), we can merge to get our consolidated table of asset and baseline returns. Nothing new here.
 
 ```{r}
 RaRb_single_portfolio1 <- left_join(stock_returns_monthly, 
                                    baseline_returns_monthly1,
-                                   by = "date")
+                                   by = "Date")
 ```
 
 # Computing the CAPM Table
@@ -149,95 +164,134 @@ RaRb_single_portfolio1 %>%
   select(Alpha, AnnualizedAlpha, Beta, Correlation, 'R-squared')
 
 ```
-```{r}
-stocks_returns_monthly %>%
-    ggplot(aes(x = date, y = Ra)) +
-    geom_bar(stat = "identity", fill = palette_light()[[1]]) +
-    labs(title = "Stock Returns",
-         subtitle = "40% AAPL, 30% GOOG, and 30% NFLX",
-         caption = "Shows an above-zero trend meaning positive returns",
-         x = "", y = "Monthly Returns") +
-    geom_smooth(method = "lm") +
-    theme_tq() +
-    scale_color_tq() +
-    scale_y_continuous(labels = scales::percent)
-```
 
-
-# This is good, but we want to see how our $10,000 initial investment is growing. This is simple with the underlying Return.portfolio argument, wealth.index = TRUE. All we need to do is add these as additional parameters to tq_portfolio!
-
-```{r}
-wts <- c(0.4, 0.3, 0.3)
-portfolio_growth_monthly <- stock_returns_monthly %>%
-    tq_portfolio(assets_col   = symbol, 
-                 returns_col  = Ra, 
-                 weights      = wts, 
-                 col_rename   = "investment.growth",
-                 wealth.index = TRUE) %>%
-    mutate(investment.growth = investment.growth * 1000)
-```
-
-```{r}
-portfolio_growth_monthly %>%
-    ggplot(aes(x = date, y = investment.growth)) +
-    geom_line(size = 2, color = palette_light()[[1]]) +
-    labs(title = "Portfolio Growth",
-         subtitle = "40% AAPL, 30% GOOG, and 30% NFLX",
-         caption = "Now we can really visualize performance!",
-         x = "", y = "Portfolio Value") +
-    geom_smooth(method = "loess") +
-    theme_tq() +
-    scale_color_tq() +
-    scale_y_continuous(labels = scales::dollar)
-```
-```{r}
-portfolio_growth_monthly_multi %>%
-    ggplot(aes(x = date, y = investment.growth, color = factor(portfolio))) +
-    geom_line(size = 2) +
-    labs(title = "Portfolio Growth",
-         subtitle = "Comparing Multiple Portfolios",
-         caption = "Portfolio 3 is a Standout!",
-         x = "", y = "Portfolio Value",
-         color = "Portfolio") +
-    geom_smooth(method = "loess") +
-    theme_tq() +
-    scale_color_tq() +
-    scale_y_continuous(labels = scales::dollar)
-```
-
-```{r}
-
-#visualize compared to benchmark S&P 500 and FSRBX (Fidelity Select Banking Portfolio)
-
-Return.cumulative(stock_returns_monthly, geometric = TRUE)
-chart.CumReturns(stock_returns_monthly, wealth.index = FALSE, geometric= TRUE)
-```
-
-#data wrangle
-#calculate the risk adjusted performance indicators
-
-library(PerformanceAnalytics)
-library(xts)
-library(lubridate)
-# load data and create an xts dataset
-fund<-read.csv("contrafund.csv")
-fund$Date<-mdy(fund$Date)
-fund2<-fund[order(fund$Date),]
-#create an xts dataset
-All.dat<-xts(fund2[,-1],order.by=fund2[,1],)
-
-Return.cumulative(All.dat, geometric =TRUE)
-chart.CumReturns(All.dat, wealth.index =FALSE, geometric = TRUE)
-
-SharpeRatio(All.dat$ContraRet,All.dat$Risk.Free)
-TreynorRatio(All.dat$ContraRet,All.dat$Market.Return,All.dat$Risk.Free)
-
-All.dat<-transform(All.dat,MktExcess=Market.Return-Risk.Free,FundExcess=ContraRet-Risk.Free)
-
-Alpha=lm(FundExcess~MktExcess,data=All.dat)
-summary(Alpha)
 
 #calculate factor analysis
+
+### Downloading our Factor Data from the Web:
+
+The first thing we are going to accomplish in this notebook is to fetch the historical factor data directly from the source. Kenneth French one of the two individuals responsible with developing factors models for finance, to this day maintains a current database of the factor data we are looking for at his personal website https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html. If you navigate to the website, you will notice nearly 100 different options factor data models to choose from. As you can see, they maintain historical factor data on several different factor combinations, industries, and countries. Today however we will be sticking to only two datasets "Fama/French North American 5 Factors Daily" which contains all but one of our desired factors. To get the momentum factor we also need to download and format "North American Momentum Factor (Mom) Daily” and merge the two frames along dates to get a unified data frame for use in constructing the factor regression models. 
+
+Below we call a function get_french_factors to download and unzip both datasets. The function first checks to see if the data is already in your current directory if so you're good to go, but if not, it downloads them directly from the web and unzips them into your current working directory, and outputs "TRUE" if the operation was successful. If for any reason this function does not work on your local machine you can always just go to the website itself, download the files, and unzip them yourself, but hopefully this function should take that legwork out of the equation.  
+
+```{r}
+get_french_factors <- function(){
+    if (!("North_America_5_Factors_Daily.csv" %in% list.files() && "North_America_MOM_Factor_Daily.csv" %in% list.files())){
+
+        momentum_destination_path = paste(getwd(),"/North_America_Mom_Factor_Daily_CSV.zip",sep="")
+        five_factors_destination_path = paste(getwd(),"/North_America_5_Factors_Daily_CSV.zip",sep="")
+        momentum_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/North_America_Mom_Factor_Daily_CSV.zip"
+        five_factors_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/North_America_5_Factors_Daily_CSV.zip"
+        download.file(momentum_url,destfile = momentum_destination_path)
+        download.file(five_factors_url,destfile = five_factors_destination_path)
+        unzip(paste(getwd(),"/North_America_Mom_Factor_Daily_CSV.zip",sep=""))
+        unzip(paste(getwd(),"/North_America_5_Factors_Daily_CSV.zip",sep=""))
+        file.remove("North_America_Mom_Factor_Daily_CSV.zip")
+        file.remove("North_America_5_Factors_Daily_CSV.zip")
+    }
+}
+
+get_french_factors()
+```
+
+```{r}
+momentum_frame = read.csv("North_America_MOM_Factor_Daily.csv",skip=6)
+momentum_frame = momentum_frame %>% rename(Date=X)
+momentum_frame$Date = ymd(momentum_frame$Date)
+head(momentum_frame)
+```
+#As we can see from the first few rows everything looks good so far next, we do the same thing for our five-factor dataset.
+
+```{r}
+five_factor_frame = read.csv("North_America_5_Factors_Daily.csv",skip=6)
+five_factor_frame = five_factor_frame %>% rename(Date=X)
+five_factor_frame$Date = ymd(five_factor_frame$Date)
+head(five_factor_frame)
+```
+
+### Merge the two factor data frames
+
+Now that we have both data frames loaded properly we can use R's merge() function to perform an inner join of the two frames along the Date feature. The reason we choose an inner join here is because we can see from examining both data frames the momentum data does not go back quite as far as the five-factor data does, so we will need to throw away some of the older observations so that the times periods match exactly.
+
+We can also see that French stores the factor names with different acronyms than the ones used in class. So, we will need to go in and rename these columns according to the names we use in class for consistency. 
+
+    - WML = MOM (Momentum)
+    - CMA = BAB (Betting against Beta or Low Volatility)
+    - RMW = QMJ (Quality minus Junk or Profitability)
+
+Each of these operations is carried out in the code cell below. Also note the commented-out line of code that allows the user to write this new data frame to its own csv file for later use.
+
+
+```{r}
+merged_frame = merge(five_factor_frame,momentum_frame,by='Date')
+merged_frame = merged_frame %>% rename(MOM=WML) %>% rename(BAB=CMA) %>% rename(QMJ=RMW) %>% rename(MKT_RF=Mkt.RF)
+merged_frame = merged_frame %>% select(Date,RF,MKT_RF,HML,SMB,QMJ,BAB,MOM) 
+#write.table(merged_frame,file="Fama_French_Factors.csv",sep=",",row.names=F)
+head(merged_frame)
+```
+### Looking at the Correlation of Factors:
+
+As noted in the Fama and French paper, there are some factors that resemble one another quite closely and are often proxies for one another given these relationships. To get a better view of this lets plot a correlation matrix of our factor values using the pairs() function as shown below. What does this correlation plot say about certain pairs of variables? Is it a good think that we have correlation among factor pairs?
+
+
+```{r}
+factors_paried = merged_frame %>% select(HML,SMB,QMJ,BAB,MOM)
+pairs(factors_paried,labels = colnames(factors_paried),  pch = 21)   
+```
+
+prices_volume_via_api_2008 <- 
+  tickers %>% 
+  riingo_prices(start_date = "2008-01-01", end_date = Sys.Date()) %>% 
+  select(ticker, date, close, volume) %>% 
+  mutate(date = ymd(date))
+
+
+"CS",
+"UBS",
+"SIVB",
+"SCHW",
+"FRC",
+"PNC",
+"SI",
+"PACW",
+"NYCB",
+"FSRBX"
+### Loading Stock Data:
+
+Now that we have our factor data organized its time to get the last piece of data required prior to building our factor model which is stock data. In the notebook we will use the same Tiingo api used in weeks 6 and 7 so this may look familiar to those of you who have gone through the advanced R code files for those weeks, and for those of you who haven't used this library before these advanced code files do a great job at introducing their functionality so check them out if you want to learn more out them and their use cases.
+
+Below we use the Tiingo api to query the daily prices for Microsoft stock ticker MSFT using a date range of 2017-12-31 to 2021-01-01. This function will output a data frame that includes a lot daily price information such as open, close, midpoint, ... etc., but for the purposes of this notebook we are only concerned with the daily stock returns (using adjusted closing price as our basis) which can be calculated from the other data using tidyquant's tq_transmutate() function. Note we also multiply by 100 to bring our returns into percentage form which is the same format used by our factor data. These operations on the data frame are demonstrated in the code cell below:
+
+
+```{r}
+FSRBX_data = tq_get(x='FSRBX',get="stock.price",from='2007-12-31',to= Sys.Date())
+FSRBX_data = FSRBX_data %>% tq_transmute(select=adjusted,mutate_fun=periodReturn,period="daily") %>% rename(Date=date) %>% rename(FSRBX=daily.returns) %>% mutate(FSRBX=FSRBX*100)
+
+```
+
+### Merge Factor and Stock Data Frames:
+
+Now that our stock return data has been properly retrieved and formatted it’s time to merge its data frame with our factor data. Again, we use R's merge() function to perform an inner join on the Dates between the data frames which will match up each period's return to its corresponding factor entry. Once our frame is merged, we still have one last data transformation to perform prior to forming our factor model. Since we pulled the returns directly from the stocks prices, we have the stocks total basic daily return in order for the factor model to work properly we need to remove each daily return's respective risk free rate to get daily returns in excess of the risk free rate. This can be done fairly easily with the mutate() function provided by dplyr as shown in the cell below:
+
+```{r}
+joint_frame = merge(merged_frame,FSRBX_data, by='Date')
+joint_frame = joint_frame %>% mutate(FSRBX_RF=FSRBX-RF) 
+head(joint_frame)
+```
+### FSRBX Performance vs. Market Performance
+
+Now that we have our data in place and properly formatted, let us see how our stock's performance compares over the same time horizon as the market before we jump into building our factor model. We can then plot the returns using the performance analytics library as we have done in past lessons to get a better visualization of how Microsoft performed relative to the market benchmark.
+
+```{r}
+stock_v_market = joint_frame %>% select(Date,FSRBX_RF,MKT_RF,RF) %>% mutate(FSRBX_RF=(FSRBX_RF+RF)/100) %>% mutate(MKT_RF=(RF+MKT_RF)/100) %>% select(Date,FSRBX_RF,MKT_RF)
+stock_v_market.xts = xts(stock_v_market[,-1],order.by=as.Date(stock_v_market[,1],"%Y%m%d"))
+chart.RelativePerformance(stock_v_market.xts[,1, drop=FALSE],stock_v_market.xts[,2, drop=FALSE],geometric = TRUE,legend.loc='right')
+```
+
+```{r}
+FSRBX_model = lm(FSRBX_RF~MKT_RF+SMB+HML+MOM+BAB+QMJ, data = joint_frame)
+summary(FSRBX_model)
+```
 
 
 #visualizations 
