@@ -5,9 +5,8 @@ Analyzing bank stocks post the bank-run that crashed Sillicon Valley Bank and us
 
 #Risk Adjusted Performance:
 - comparison to a benchmark
+- Alpha, Beta, r^2
 - Sharpe Ratio
-- Treynor Ratio
-- Jensen's Alpha 
 
 ## Factor Investing
 
