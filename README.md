@@ -3,7 +3,7 @@
 Analyzing bank stocks post the bank-run that crashed Sillicon Valley Bank and using French-Fama Factor Investing and other investing metrics.
 
 
-#Risk Adjusted Performance:
+## Risk Adjusted Performance:
 - comparison to a benchmark
 - Alpha, Beta, r^2
 - Sharpe Ratio
